@@ -138,13 +138,14 @@ test('playlist sync actions request Plex setup before navigating there', async (
   const setupDialog = page.getByRole('dialog');
   await expect(setupDialog.getByRole('heading', { name: 'Connect Plex to continue' })).toBeVisible();
   await expect(setupDialog).toContainText('Your playlist will stay saved.');
-  await setupDialog.getByRole('link', { name: 'Go to Plex setup' }).click();
-  await expect(page).toHaveURL(/#\/connections$/);
+  await setupDialog.getByRole('link', { name: 'Go to Settings' }).click();
+  await expect(page).toHaveURL(/#\/settings$/);
   await expect(page.getByRole('button', { name: 'Connect Plex' })).toBeVisible();
 });
 
 test('previews playlist matches against a selected Plex music library', async ({ page }) => {
   const playlistRequests: string[] = [];
+  let downloadedMissingTrack = false;
   await page.route('https://plex.example:32400/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -167,7 +168,7 @@ test('previews playlist matches against a selected Plex music library', async ({
       await route.fulfill({
         contentType: 'application/xml',
         headers: { 'Access-Control-Allow-Origin': '*' },
-        body: '<MediaContainer><Track ratingKey="plex-1" title="Found song" grandparentTitle="Found artist" parentTitle="Album" duration="180000"/><Track ratingKey="plex-2" title="Second found" grandparentTitle="Found artist" parentTitle="Album" duration="180000"/><Track ratingKey="plex-3" title="Dreams" grandparentTitle="Fleetwood Mac" parentTitle="Rumours" duration="250000"/><Track ratingKey="plex-4" title="Dreams" grandparentTitle="Fleetwood Mac" parentTitle="The Dance" duration="250000"/><Track ratingKey="plex-5" title="Stay" grandparentTitle="Shakespears Sister" parentTitle="Hormonally Yours" duration="210000"/><Track ratingKey="plex-6" title="Stay" grandparentTitle="Shakespears Sister" parentTitle="Greatest Hits" duration="210000"/><Track ratingKey="plex-7" title="Paparazzi" grandparentTitle="Various Artists" parentTitle="Tony Hawk&apos;s Pro Skater 3" duration="180000"/><Track ratingKey="plex-8" title="Check" grandparentTitle="Various Artists" parentTitle="Tony Hawk&apos;s Pro Skater 3" duration="210000"/></MediaContainer>',
+        body: `<MediaContainer><Track ratingKey="plex-1" title="Found song" grandparentTitle="Found artist" parentTitle="Album" duration="180000"/><Track ratingKey="plex-2" title="Second found" grandparentTitle="Found artist" parentTitle="Album" duration="180000"/><Track ratingKey="plex-3" title="Dreams" grandparentTitle="Fleetwood Mac" parentTitle="Rumours" duration="250000"/><Track ratingKey="plex-4" title="Dreams" grandparentTitle="Fleetwood Mac" parentTitle="The Dance" duration="250000"/><Track ratingKey="plex-5" title="Stay" grandparentTitle="Shakespears Sister" parentTitle="Hormonally Yours" duration="210000"/><Track ratingKey="plex-6" title="Stay" grandparentTitle="Shakespears Sister" parentTitle="Greatest Hits" duration="210000"/><Track ratingKey="plex-7" title="Paparazzi" grandparentTitle="Various Artists" parentTitle="Tony Hawk&apos;s Pro Skater 3" duration="180000"/><Track ratingKey="plex-8" title="Check" grandparentTitle="Various Artists" parentTitle="Tony Hawk&apos;s Pro Skater 3" duration="210000"/>${downloadedMissingTrack ? '<Track ratingKey="plex-9" title="Missing song" grandparentTitle="Missing artist" parentTitle="Other album" duration="200000"/>' : ''}</MediaContainer>`,
       });
     } else if (url.pathname === '/playlists' && request.method() === 'GET') {
       await route.fulfill({
@@ -284,10 +285,29 @@ test('previews playlist matches against a selected Plex music library', async ({
   await expect(page.locator('.playlist-card')).toContainText('Synced');
   await page.getByRole('link', { name: 'Missing tracks' }).click();
   await expect(page.getByRole('link', { name: 'Set up Lidarr' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Album' })).toHaveCount(0);
+  const missingSongRow = page.getByRole('row').filter({ hasText: 'Missing song' });
+  await expect(missingSongRow).toContainText('Road Mix');
+  await expect(missingSongRow.getByText('Missing from Plex')).toHaveCSS('white-space', 'nowrap');
   const stayRow = page.getByRole('row').filter({ hasText: 'Stay' });
   await stayRow.getByRole('combobox', { name: 'Plex match for Stay' }).selectOption('plex-5');
   await stayRow.getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByRole('row').filter({ hasText: 'Stay' })).toHaveCount(0);
+
+  downloadedMissingTrack = true;
+  await page.getByRole('link', { name: 'Continue sync' }).click();
+  await expect(page).toHaveURL(/#\/playlists$/);
+  const continueDialog = page.getByRole('dialog');
+  await expect(continueDialog.getByRole('heading', { name: 'Sync now results' })).toBeVisible();
+  await expect(continueDialog).toContainText('7 matched · 0 missing · 0 need review');
+  await expect(continueDialog.getByRole('radio', { name: 'Add to an existing playlist' })).toBeChecked();
+  await expect(continueDialog.locator('#target-plex-playlist')).toHaveValue('existing-playlist');
+  await continueDialog.getByRole('button', { name: 'Add 7 tracks to playlist' }).click();
+  await expect(continueDialog.getByRole('heading', { name: 'Sync complete' })).toBeVisible();
+  expect(playlistRequests.slice(4).some((request) => request.includes('plex-9'))).toBe(true);
+  await continueDialog.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('link', { name: 'Missing tracks' }).click();
+  await expect(page.getByText('No missing tracks to show yet. Import a playlist to get started.')).toBeVisible();
 });
 
 test('connects a Plex account and selects an available server', async ({ page }) => {
@@ -318,6 +338,9 @@ test('connects a Plex account and selects an available server', async ({ page })
   });
 
   await page.goto('/#/connections');
+  await expect(page).toHaveURL(/#\/settings$/);
+  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Plex' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Public playlist import' })).toHaveCount(0);
   await expect(page.locator('.portfolio-main')).toHaveAttribute('aria-busy', 'false');
   await page.getByRole('button', { name: 'Connect Plex' }).click();
   const authorizeLink = page.getByRole('link', { name: 'Open Plex to authorize' });

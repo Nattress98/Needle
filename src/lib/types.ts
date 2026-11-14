@@ -75,6 +75,8 @@ export interface MissingTrack {
   status: 'missing' | 'review';
   spotifyTrackId: string;
   playlistId?: string;
+  plexPlaylistId?: string;
+  plexPlaylistName?: string;
   candidatePlexTracks?: PlexTrack[];
   lidarrAlbumId?: number;
 }

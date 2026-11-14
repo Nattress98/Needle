@@ -33,4 +33,21 @@ test.describe('Accessibility', () => {
       targets: nodes.map(({ target }) => target),
     }))).toEqual([]);
   });
+
+  test('Plex settings controls have no accessibility violations', async ({ page }) => {
+    await page.goto('/#/settings');
+    await page.addStyleTag({
+      content: '*, *::before, *::after { animation: none !important; transition: none !important; }',
+    });
+
+    const results = await new AxeBuilder({ page })
+      .include('.connection-card')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+      .analyze();
+
+    expect(results.violations.map(({ id, nodes }) => ({
+      id,
+      targets: nodes.map(({ target }) => target),
+    }))).toEqual([]);
+  });
 });
