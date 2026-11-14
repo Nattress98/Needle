@@ -53,7 +53,9 @@ Lidarr must be reachable from the browser and allow cross-origin API access. Kee
 
 ## GitHub Pages deployment
 
-This app is configured with a relative `base` path so it can be deployed to GitHub Pages without a Node server. A GitHub Actions workflow is included for building and publishing the static bundle.
+In the repository's **Settings → Pages → Build and deployment**, set **Source** to **GitHub Actions**. The included workflow builds the app and publishes the generated `dist` directory; deploying the repository root instead serves the unbuilt Vite entry point and will not work.
+
+This app is configured with a relative `base` path so it can be deployed under a GitHub Pages project path without a Node server. After setting the Pages source, rerun the **Deploy static site to GitHub Pages** workflow or push a new commit to `main`.
 
 ## Notes on integrations
 
