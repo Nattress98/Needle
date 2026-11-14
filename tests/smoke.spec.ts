@@ -283,9 +283,15 @@ test('previews playlist matches against a selected Plex music library', async ({
   expect(playlistRequests[3]).toContain('plex-8');
   await syncDialog.getByRole('button', { name: 'Close' }).click();
   await expect(page.locator('.playlist-card')).toContainText('Synced');
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('link', { name: 'Missing tracks' }).click();
   await expect(page.getByRole('link', { name: 'Set up Lidarr' })).toBeVisible();
   await expect(page.getByRole('columnheader', { name: 'Album' })).toHaveCount(0);
+  const missingTracksTable = page.getByRole('table');
+  await expect(missingTracksTable.locator('..')).toHaveCSS('overflow-x', 'auto');
+  expect(await missingTracksTable.evaluate((table) => table.scrollWidth))
+    .toBeGreaterThan(await missingTracksTable.evaluate((table) => table.parentElement!.clientWidth));
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   const missingSongRow = page.getByRole('row').filter({ hasText: 'Missing song' });
   await expect(missingSongRow).toContainText('Road Mix');
   await expect(missingSongRow.getByText('Missing from Plex')).toHaveCSS('white-space', 'nowrap');
@@ -297,6 +303,8 @@ test('previews playlist matches against a selected Plex music library', async ({
   downloadedMissingTrack = true;
   await page.getByRole('link', { name: 'Continue sync' }).click();
   await expect(page).toHaveURL(/#\/playlists$/);
+  await expect(page.getByText('Recheck Plex and add newly available tracks to Road Mix.')).toBeVisible();
+  await page.getByRole('button', { name: 'Recheck Plex library' }).click();
   const continueDialog = page.getByRole('dialog');
   await expect(continueDialog.getByRole('heading', { name: 'Sync now results' })).toBeVisible();
   await expect(continueDialog).toContainText('7 matched · 0 missing · 0 need review');
@@ -333,7 +341,7 @@ test('connects a Plex account and selects an available server', async ({ page })
   await page.route('https://plex.tv/api/resources?**', async (route) => {
     await route.fulfill({
       contentType: 'application/xml',
-      body: '<MediaContainer size="1"><Device name="Living Room Plex" provides="server" clientIdentifier="plex-machine-1" accessToken="server-access-token"><Connection uri="https://plex.example:32400" local="1"/></Device></MediaContainer>',
+      body: '<MediaContainer size="1"><Device name="Living Room Plex" provides="server" clientIdentifier="plex-machine-1" accessToken="server-access-token"><Connection uri="https://plex.example:32400" local="0" relay="0"/><Connection uri="https://relay.example:443" local="0" relay="1"/><Connection uri="http://192.168.1.20:32400" local="1"/></Device></MediaContainer>',
     });
   });
 
@@ -346,13 +354,14 @@ test('connects a Plex account and selects an available server', async ({ page })
   const authorizeLink = page.getByRole('link', { name: 'Open Plex to authorize' });
   await expect(authorizeLink).toBeVisible();
   await expect(authorizeLink).toHaveAttribute('href', /code=ABCD/);
-  await expect(page.getByRole('option', { name: 'Living Room Plex' })).toHaveCount(1);
+  await expect(page.getByRole('option', { name: 'Living Room Plex — Remote direct' })).toHaveCount(1);
+  await expect(page.getByRole('option', { name: 'Living Room Plex — Plex Relay' })).toHaveCount(1);
   await expect.poll(() => pollRequestHeaders['x-plex-client-identifier']).toBe('spotify-plex-sync-app');
   expect(pinRequestHeaders['x-plex-client-identifier']).toBe('spotify-plex-sync-app');
   expect(pinRequestHeaders['x-plex-product']).toBe('Spotify to Plex Sync');
   expect(pinRequestStrong).toBe('true');
   expect(pollRequestHeaders['x-plex-product']).toBe('Spotify to Plex Sync');
-  await page.getByLabel('Plex server').selectOption('plex-machine-1');
+  await page.getByLabel('Plex server connection').selectOption('https://plex.example:32400');
   await expect(page.getByText('musicfan')).toBeVisible();
 
   await page.reload();

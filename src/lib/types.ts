@@ -1,5 +1,6 @@
 export type Confidence = 'high' | 'medium' | 'low';
 export type SyncStatus = 'ready' | 'synced' | 'partial';
+export type PlexConnectionType = 'local' | 'remote' | 'relay';
 
 export interface SpotifyTrack {
   id: string;
@@ -95,6 +96,7 @@ export interface AppState {
     url: string;
     serverId: string;
     accessToken?: string;
+    connectionType?: PlexConnectionType;
   };
   selectedLibrary?: {
     key: string;

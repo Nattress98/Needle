@@ -355,10 +355,7 @@ function PlaylistView({
   ) => void;
 }) {
   const location = useLocation();
-  const navigate = useNavigate();
-  const resumedLocationKey = useRef<string | null>(null);
   const [requestedAction, setRequestedAction] = useState<{
-    action: 'Preview sync' | 'Sync now' | 'Missing tracks';
     playlist: PlaylistMeta;
     loading: boolean;
     libraries?: PlexMusicLibrary[];
@@ -373,39 +370,44 @@ function PlaylistView({
     completed?: { plexPlaylistId: string; name: string; addedCount: number; alreadyPresentCount: number };
   } | null>(null);
   const plexReady = state.plexConnected && Boolean(state.selectedServer);
+  const resumeRequest = location.state as {
+    resumeSyncPlaylistId?: string;
+    plexPlaylistId?: string;
+    plexPlaylistName?: string;
+  } | null;
+  const resumePlaylist = resumeRequest?.resumeSyncPlaylistId
+    ? state.importedPlaylists.find(({ id }) => id === resumeRequest.resumeSyncPlaylistId)
+    : undefined;
 
   const loadPreview = useCallback(async (
     playlist: PlaylistMeta,
-    action: 'Preview sync' | 'Sync now' | 'Missing tracks',
     preferredPlexPlaylistId?: string,
   ) => {
-    setRequestedAction({ action, playlist, loading: true });
+    setRequestedAction({ playlist, loading: true });
     const server = state.selectedServer;
     const token = server?.accessToken || state.plexToken;
     const tracks = state.spotifyTracks[playlist.id] ?? [];
     if (!server || !token) {
-      setRequestedAction({ action, playlist, loading: false, error: 'Plex credentials are missing. Reconnect Plex and select your server again.' });
+      setRequestedAction({ playlist, loading: false, error: 'Plex credentials are missing. Reconnect Plex and select your server again.' });
       return;
     }
     if (tracks.length === 0) {
-      setRequestedAction({ action, playlist, loading: false, error: 'This playlist has no imported track data. Re-import the public playlist listing before previewing it.' });
+      setRequestedAction({ playlist, loading: false, error: 'This playlist has no imported track data. Re-import the public playlist listing before previewing it.' });
       return;
     }
     try {
       const [libraries, audioPlaylists] = await Promise.all([
         discoverPlexMusicLibraries(server.url, token),
-        action === 'Sync now' ? getPlexAudioPlaylists(server.url, token) : Promise.resolve([]),
+        getPlexAudioPlaylists(server.url, token),
       ]);
       if (libraries.length === 0) {
-        setRequestedAction({ action, playlist, loading: false, error: 'No Plex music libraries were found on the selected server.' });
+        setRequestedAction({ playlist, loading: false, error: 'No Plex music libraries were found on the selected server.' });
         return;
       }
-      const previousSync = action === 'Sync now'
-        ? state.syncHistory.find((record) =>
-          record.spotifyPlaylistId === playlist.id &&
-          (!preferredPlexPlaylistId || record.plexPlaylistId === preferredPlexPlaylistId),
-        )
-        : undefined;
+      const previousSync = state.syncHistory.find((record) =>
+        record.spotifyPlaylistId === playlist.id &&
+        (!preferredPlexPlaylistId || record.plexPlaylistId === preferredPlexPlaylistId),
+      );
       const previousDestinationId = preferredPlexPlaylistId ?? previousSync?.plexPlaylistId;
       const existingDestination = audioPlaylists.find(({ id }) => id === previousDestinationId);
       const playlistMode = existingDestination ? 'existing' : 'new';
@@ -415,7 +417,6 @@ function PlaylistView({
         const library = preferredLibrary ?? libraries[0];
         const plexTracks = await getPlexMusicLibraryTracks(server.url, token, library.key);
         setRequestedAction({
-          action,
           playlist,
           loading: false,
           libraries,
@@ -430,7 +431,6 @@ function PlaylistView({
         return;
       }
       setRequestedAction({
-        action,
         playlist,
         loading: false,
         libraries,
@@ -441,34 +441,12 @@ function PlaylistView({
       });
     } catch (error) {
       setRequestedAction({
-        action,
         playlist,
         loading: false,
         error: error instanceof Error ? error.message : 'Could not load music from the selected Plex server.',
       });
     }
   }, [state]);
-
-  useEffect(() => {
-    const resumeRequest = location.state as {
-      resumeSyncPlaylistId?: string;
-      plexPlaylistId?: string;
-    } | null;
-    if (!resumeRequest?.resumeSyncPlaylistId || resumedLocationKey.current === location.key) {
-      return;
-    }
-
-    const playlist = state.importedPlaylists.find(({ id }) => id === resumeRequest.resumeSyncPlaylistId);
-    if (!playlist) {
-      return;
-    }
-
-    resumedLocationKey.current = location.key;
-    navigate('/playlists', { replace: true, state: null });
-    // Consume this one-shot route command by opening the existing asynchronous sync preview.
-    // oxlint-disable-next-line react(set-state-in-effect)
-    void loadPreview(playlist, 'Sync now', resumeRequest.plexPlaylistId);
-  }, [loadPreview, location.key, location.state, navigate, state.importedPlaylists]);
 
   const loadSelectedLibrary = async () => {
     if (!requestedAction?.libraries || !requestedAction.libraryKey || !state.selectedServer) {
@@ -487,9 +465,7 @@ function PlaylistView({
           token,
           requestedAction.libraryKey,
         ),
-        requestedAction.action === 'Sync now'
-          ? getPlexAudioPlaylists(state.selectedServer.url, token)
-          : Promise.resolve(requestedAction.audioPlaylists ?? []),
+        getPlexAudioPlaylists(state.selectedServer.url, token),
       ]);
       const selectedDestinationExists = audioPlaylists.some(
         ({ id }) => id === requestedAction.targetPlaylistId,
@@ -643,6 +619,23 @@ function PlaylistView({
         onImport={onImport}
       />
 
+      {resumePlaylist && (
+        <section className="rounded-2xl border border-yellow-300/40 bg-zinc-950/70 p-5">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-yellow-300">Continue sync</p>
+          <h2 className="mt-2 text-lg font-semibold text-white">{resumePlaylist.name}</h2>
+          <p className="mt-1 text-sm text-zinc-300">
+            Recheck Plex and add newly available tracks to {resumeRequest?.plexPlaylistName ?? 'the original playlist'}.
+          </p>
+          <button
+            type="button"
+            className="mt-4 rounded-lg border border-yellow-300 bg-zinc-900 px-4 py-2 text-sm font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-yellow-300 focus-visible:outline-offset-2"
+            onClick={() => void loadPreview(resumePlaylist, resumeRequest?.plexPlaylistId)}
+          >
+            Recheck Plex library
+          </button>
+        </section>
+      )}
+
       <div className="playlist-library">
         {state.importedPlaylists.map((playlist) => {
           const importedTracks = state.spotifyTracks[playlist.id] ?? [];
@@ -688,22 +681,13 @@ function PlaylistView({
                 </details>
               )}
               <div className="mt-4 flex flex-wrap gap-2">
-                {(['Preview sync', 'Sync now', 'Missing tracks'] as const).map((action) => (
-                  <button
-                    key={action}
-                    type="button"
-                    onClick={() => {
-                      if (plexReady) {
-                        void loadPreview(playlist, action);
-                      } else {
-                        setRequestedAction({ action, playlist, loading: false });
-                      }
-                    }}
-                    className="playlist-action-button rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-200"
-                  >
-                    {action}
-                  </button>
-                ))}
+                <button
+                  type="button"
+                  onClick={() => void loadPreview(playlist)}
+                  className="playlist-action-button inline-flex min-h-11 items-center gap-2 rounded-full border border-yellow-300 bg-yellow-300 px-4 py-2 text-sm font-bold text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-300"
+                >
+                  Preview and sync <ArrowRight className="h-4 w-4" />
+                </button>
               </div>
             </article>
           );
@@ -716,17 +700,17 @@ function PlaylistView({
           }
         }}>
           <section
-            className={`playlist-action-dialog ${requestedAction.action === 'Sync now' ? 'playlist-sync-dialog' : ''}`}
+            className={`playlist-action-dialog ${plexReady ? 'playlist-sync-dialog' : ''}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="playlist-action-title"
           >
-            <p className="playlist-action-eyebrow">{requestedAction.completed ? 'PLEX PLAYLIST CREATED' : requestedAction.summary ? 'MATCH PREVIEW' : plexReady ? 'PLEX' : 'PLEX SETUP'}</p>
+            <p className="playlist-action-eyebrow">{requestedAction.completed ? 'PLEX PLAYLIST UPDATED' : requestedAction.summary ? 'SYNC PREVIEW' : plexReady ? 'PLEX' : 'PLEX SETUP'}</p>
             <h2 id="playlist-action-title">
               {requestedAction.completed
                 ? 'Sync complete'
                 : requestedAction.summary
-                ? `${requestedAction.action} results`
+                ? 'Review matches and choose a destination'
                 : !plexReady
                   ? 'Connect Plex to continue'
                   : requestedAction.loading
@@ -735,7 +719,7 @@ function PlaylistView({
                       ? 'Could not load the preview'
                       : requestedAction.libraries
                         ? 'Choose a music library'
-                        : 'Playlist preview'}
+                        : 'Preview your playlist'}
             </h2>
             {requestedAction.loading && <p>{requestedAction.summary ? 'Updating the Plex playlist with matched tracks…' : 'Reading music libraries and matching tracks. This may take a moment for a large library.'}</p>}
             {requestedAction.error && <p role="alert">{requestedAction.error}</p>}
@@ -746,9 +730,9 @@ function PlaylistView({
               </p>
             )}
             {!plexReady && (
-              <p>To {requestedAction.action.toLowerCase()}, first connect your Plex account and choose the server that contains your music. Your playlist will stay saved.</p>
+              <p>To preview and sync, first connect your Plex account and choose the server that contains your music. Your playlist will stay saved.</p>
             )}
-            {plexReady && requestedAction.action === 'Sync now' && requestedAction.summary && !requestedAction.completed && (
+            {plexReady && requestedAction.summary && !requestedAction.completed && (
               <p className="playlist-sync-warning">
                 {requestedAction.playlistMode === 'existing'
                   ? 'Only confident matches are added to the selected playlist. Tracks already there are skipped; missing and “needs review” tracks are excluded.'
@@ -776,7 +760,7 @@ function PlaylistView({
             {requestedAction.summary && (
               <div className="mt-4 space-y-4">
                 <p>{requestedAction.summary.matched.length} matched · {requestedAction.summary.missingSpotify.length} missing · {requestedAction.summary.ambiguous.length} need review</p>
-                {requestedAction.action === 'Sync now' && !requestedAction.completed && (
+                {!requestedAction.completed && (
                   <div className="space-y-3 rounded-lg border border-zinc-700 p-3">
                     <fieldset className="playlist-destination">
                       <legend className="mb-2 font-bold">Playlist destination</legend>
@@ -806,7 +790,7 @@ function PlaylistView({
                         Add to an existing playlist
                       </label>
                       {!requestedAction.audioPlaylists?.length && (
-                        <p className="playlist-destination-empty">No existing Plex audio playlists were found. Create one in Plex, then reload Sync now.</p>
+                        <p className="playlist-destination-empty">No existing Plex audio playlists were found. Create one in Plex, then reload the preview.</p>
                       )}
                     </fieldset>
                     {requestedAction.playlistMode === 'existing' && requestedAction.audioPlaylists && (
@@ -903,7 +887,7 @@ function PlaylistView({
                   <ArrowRight className="h-4 w-4" />
                 </NavLink>
               )}
-              {plexReady && requestedAction.action === 'Sync now' && (
+              {plexReady && (
                 requestedAction.summary && !requestedAction.completed ? (
                   <button
                     type="button"
@@ -921,6 +905,12 @@ function PlaylistView({
                         : `Create Plex playlist (${requestedAction.summary.matched.length})`}
                   </button>
                 ) : null
+              )}
+              {requestedAction.completed && (
+                <NavLink to="/missing" onClick={() => setRequestedAction(null)}>
+                  View missing tracks
+                  <ArrowRight className="h-4 w-4" />
+                </NavLink>
               )}
               <button type="button" onClick={() => setRequestedAction(null)}>
                 {plexReady ? 'Close' : 'Not now'}
@@ -1111,7 +1101,11 @@ function MissingTracksView({
                 </div>
                 <NavLink
                   to="/playlists"
-                  state={{ resumeSyncPlaylistId: target.playlistId, plexPlaylistId: target.plexPlaylistId }}
+                  state={{
+                    resumeSyncPlaylistId: target.playlistId,
+                    plexPlaylistId: target.plexPlaylistId,
+                    plexPlaylistName: target.plexPlaylistName,
+                  }}
                   className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-yellow-300 bg-zinc-900 px-4 py-2 text-sm font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-yellow-300 focus-visible:outline-offset-2"
                 >
                   Continue sync <ArrowRight className="h-4 w-4" />
@@ -1123,7 +1117,7 @@ function MissingTracksView({
       )}
 
       <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950/70">
-        <table className="min-w-[760px] text-left text-sm text-zinc-300">
+        <table className="w-full min-w-[760px] text-left text-sm text-zinc-300">
           <thead className="border-b border-zinc-800 bg-zinc-900/80 text-xs uppercase tracking-[0.2em] text-zinc-500">
             <tr>
               <th className="px-4 py-3">Track</th>
@@ -1452,29 +1446,35 @@ function PlexConnectionSettings({
           <label className="min-w-[220px] flex-1 text-sm font-semibold text-white">
             Plex server
             <select
-              className="mt-2 min-h-11 w-full rounded-lg border border-zinc-600 bg-zinc-900 px-3 text-sm text-white"
-              value={state.selectedServer?.serverId ?? ''}
+              className="mt-2 min-h-11 w-full rounded-lg border border-zinc-600 bg-zinc-900 px-3 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+              value={state.selectedServer?.url ?? ''}
               onChange={(event) => {
-                const server = servers.find((item) => (item.machineIdentifier ?? item.url) === event.target.value);
+                const server = servers.find((item) => item.url === event.target.value);
                 if (server) {
                   onServerSelect({
                     name: server.name,
                     url: server.url,
                     serverId: server.machineIdentifier ?? server.url,
+                    connectionType: server.connectionType,
                     ...(server.accessToken ? { accessToken: server.accessToken } : {}),
                   });
                 }
               }}
-              aria-label="Plex server"
+              aria-label="Plex server connection"
             >
-              <option value="">Choose a server</option>
+              <option value="">Choose a server connection</option>
               {servers.map((server) => (
-                <option key={server.machineIdentifier ?? server.url} value={server.machineIdentifier ?? server.url}>
-                  {server.name}
+                <option key={server.url} value={server.url}>
+                  {server.name} — {server.connectionType === 'local'
+                    ? 'Local network'
+                    : server.connectionType === 'relay' ? 'Plex Relay' : 'Remote direct'}
                 </option>
               ))}
             </select>
           </label>
+          <p className="w-full text-sm text-zinc-300">
+            Choose a remote connection to use Plex away from your home network. Plex Relay may be slower and is only listed when Plex makes it available.
+          </p>
           <button type="button" onClick={() => { if (state.plexToken) void loadServers(state.plexToken); }} disabled={loading} className="min-h-11 rounded-lg border border-zinc-600 bg-zinc-900 px-4 text-sm font-semibold text-white disabled:opacity-60">
             {loading ? 'Loading…' : 'Refresh servers'}
           </button>
@@ -1484,7 +1484,7 @@ function PlexConnectionSettings({
         <ol className="plex-connect-steps mt-5">
           <li>Choose <strong>Connect Plex</strong> and authorize in Plex.</li>
           <li>Return here; your available servers will load.</li>
-          <li>Choose the server that contains your music.</li>
+          <li>Choose the server connection that contains your music. Remote direct or Plex Relay can work away from home when Plex makes them available.</li>
         </ol>
       )}
       {state.plexConnected && (
@@ -1565,7 +1565,7 @@ function SettingsView({
             {lidarrNotice && <p role="status" className="text-sm font-medium text-emerald-300">{lidarrNotice}</p>}
           </div>
         </form>
-        <p className="mt-3 text-xs text-zinc-300">
+        <p className="mt-5 text-xs text-zinc-300">
           Lidarr must be reachable from this browser and allow cross-origin requests. Keep the API key private.
         </p>
       </div>

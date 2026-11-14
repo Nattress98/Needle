@@ -8,7 +8,7 @@ A static React + TypeScript application that helps compare a Spotify playlist ag
 - Parse track title, artist, duration and ordering from public playlist text
 - Local IndexedDB persistence for imported playlist metadata and tracks
 - Matching engine with normalisation, duplicate handling and confidence scoring
-- Dashboard, playlists, missing tracks, connections and settings screens
+- Overview, playlists, missing tracks and settings screens
 - Empty first-run state; playlists appear only after you import them
 
 ## Setup
@@ -28,11 +28,11 @@ The browser cannot read Spotify's cross-origin embed page directly. The listing 
 
 ## Connect Plex
 
-1. Open **Plex** in the top navigation and select **Connect Plex**.
+1. Open **Settings** in the top navigation and select **Connect Plex**.
 2. Sign in and authorize the app in the Plex tab that opens.
-3. Return to this page, then choose the Plex Media Server that contains your music. Use **Refresh servers** if it is not listed.
+3. Return to Settings, then choose the Plex Media Server that contains your music. Use **Refresh servers** if it is not listed.
 
-The Plex account token and selected server are stored locally in this browser's IndexedDB. **Preview sync** discovers the server's music libraries, reads track metadata, and compares artist and title together; an exact title with a different artist is never considered a match. If there are multiple music libraries, choose one in the preview dialog. Ambiguous results can be manually confirmed before syncing or from **Missing tracks**; confirmed choices are remembered locally. **Sync now** can create a new audio playlist or add matched tracks to an existing one, skipping tracks already present. Missing and unresolved ambiguous tracks are excluded.
+The Plex account token and selected server connection are stored locally in this browser's IndexedDB. When Plex reports multiple connection URLs, Settings lets you choose a **Local network**, **Remote direct**, or **Plex Relay** connection. Choose a remote option to use the app away from your home network; this requires Plex remote access or Relay to be available and the chosen URL to allow browser access. `app.plex.tv` is Plex's web client, not a proxy for this app's API requests. **Preview sync** discovers the server's music libraries, reads track metadata, and compares artist and title together; an exact title with a different artist is never considered a match. If there are multiple music libraries, choose one in the preview dialog. Ambiguous results can be manually confirmed before syncing or from **Missing tracks**; confirmed choices are remembered locally. **Sync now** can create a new audio playlist or add matched tracks to an existing one, skipping tracks already present. Missing and unresolved ambiguous tracks are excluded. The **Missing tracks** page identifies the Plex destination for each partial sync and provides **Continue sync**. After newly added tracks appear in Plex, use it to recheck the library and add matches to that same destination playlist.
 
 ## Add missing albums to Lidarr
 
@@ -59,4 +59,4 @@ This app is configured with a relative `base` path so it can be deployed under a
 
 ## Notes on integrations
 
-This playlist importer does not use Spotify APIs or authenticate with Spotify. Preview and sync requests run directly from the browser to the selected Plex server; the server must be reachable and permit browser cross-origin reads and playlist writes. Lidarr requests also run directly from the browser to the URL entered in Settings. Matching and import parsing are covered by unit tests.
+This playlist importer does not use Spotify APIs or authenticate with Spotify. Preview and sync requests run directly from the browser to the selected Plex server connection; the server must be reachable and permit browser cross-origin reads and playlist writes. For access outside the home network, enable Plex Remote Access or use a VPN; Plex Relay may be slower and limited. A static deployment cannot proxy Plex requests, and selecting a remote URL does not bypass CORS, TLS, firewall, or browser network restrictions. Lidarr requests also run directly from the browser to the URL entered in Settings. Matching and import parsing are covered by unit tests.

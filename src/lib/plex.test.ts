@@ -27,15 +27,17 @@ describe('parsePlexResources', () => {
         name: 'Living Room',
         url: 'https://plex.example:32400',
         machineIdentifier: 'machine-1',
+        connectionType: 'local',
       },
     ]);
   });
 
-  it('parses Plex XML resources and prefers local connections', () => {
+  it('parses Plex XML resources and orders local, remote, and relay connections', () => {
     const xml = `<?xml version="1.0"?>
-      <MediaContainer size="2">
+      <MediaContainer size="3">
         <Device name="Living Room" provides="server" clientIdentifier="machine-1" accessToken="server-token">
-          <Connection uri="https://relay.example:443" local="0" />
+          <Connection uri="https://relay.example:443" local="0" relay="1" />
+          <Connection uri="https://remote.example:32400" local="0" relay="0" />
           <Connection uri="http://192.168.1.20:32400" local="1" />
         </Device>
         <Device name="Plexamp" provides="client">
@@ -49,6 +51,21 @@ describe('parsePlexResources', () => {
         url: 'http://192.168.1.20:32400',
         accessToken: 'server-token',
         machineIdentifier: 'machine-1',
+        connectionType: 'local',
+      },
+      {
+        name: 'Living Room',
+        url: 'https://remote.example:32400',
+        accessToken: 'server-token',
+        machineIdentifier: 'machine-1',
+        connectionType: 'remote',
+      },
+      {
+        name: 'Living Room',
+        url: 'https://relay.example:443',
+        accessToken: 'server-token',
+        machineIdentifier: 'machine-1',
+        connectionType: 'relay',
       },
     ]);
   });
@@ -75,6 +92,7 @@ describe('discoverPlexServers', () => {
           name: 'Music Server',
           url: 'https://music.example:32400',
           machineIdentifier: 'music-id',
+          connectionType: 'local',
         },
       ]);
     } finally {

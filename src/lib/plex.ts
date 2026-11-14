@@ -1,4 +1,4 @@
-import type { PlexTrack } from './types';
+import type { PlexConnectionType, PlexTrack } from './types';
 
 export interface PlexPinResponse {
   id: string;
@@ -12,6 +12,7 @@ export interface PlexServer {
   url: string;
   accessToken?: string;
   machineIdentifier?: string;
+  connectionType: PlexConnectionType;
 }
 
 export interface PlexMusicLibrary {
@@ -90,6 +91,7 @@ export function getPlexAuthorizationUrl(pin: PlexPinResponse): string {
 interface PlexResourceConnection {
   uri?: string;
   local?: boolean | string | number;
+  relay?: boolean | string | number;
 }
 
 interface PlexResourceDevice {
@@ -119,6 +121,22 @@ interface PlexTrackEntry {
 
 function isLocalConnection(connection: PlexResourceConnection): boolean {
   return connection.local === true || connection.local === 1 || connection.local === '1';
+}
+
+function isRelayConnection(connection: PlexResourceConnection): boolean {
+  return connection.relay === true || connection.relay === 1 || connection.relay === '1';
+}
+
+function getConnectionType(connection: PlexResourceConnection): PlexConnectionType {
+  if (isLocalConnection(connection)) {
+    return 'local';
+  }
+  return isRelayConnection(connection) ? 'relay' : 'remote';
+}
+
+function getConnectionPriority(connection: PlexResourceConnection): number {
+  const type = getConnectionType(connection);
+  return type === 'local' ? 0 : type === 'remote' ? 1 : 2;
 }
 
 function parsePlexResourceJson(text: string): PlexResourceDevice[] {
@@ -159,6 +177,7 @@ function parsePlexResourceXml(text: string): PlexResourceDevice[] {
     Connection: Array.from(device.querySelectorAll(':scope > Connection')).map((connection) => ({
       uri: connection.getAttribute('uri') ?? undefined,
       local: connection.getAttribute('local') ?? undefined,
+      relay: connection.getAttribute('relay') ?? undefined,
     })),
   }));
 }
@@ -275,19 +294,17 @@ function toPlexServers(devices: PlexResourceDevice[]): PlexServer[] {
     const connections = device.Connection
       ? Array.isArray(device.Connection) ? device.Connection : [device.Connection]
       : [];
-    const connection = connections
+    const availableConnections = connections
       .filter((candidate) => Boolean(candidate.uri))
-      .sort((left, right) => Number(isLocalConnection(right)) - Number(isLocalConnection(left)))[0];
-    if (!connection?.uri) {
-      return [];
-    }
+      .sort((left, right) => getConnectionPriority(left) - getConnectionPriority(right));
 
-    return [{
+    return availableConnections.flatMap((connection) => connection.uri ? [{
       name: device.name ?? 'Unknown server',
       url: connection.uri.replace(/\/+$/, ''),
       accessToken: device.accessToken,
       machineIdentifier: device.machineIdentifier,
-    }];
+      connectionType: getConnectionType(connection),
+    }] : []);
   });
 }
 
