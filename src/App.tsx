@@ -110,13 +110,18 @@ function DashboardView({
           </form>
         </div>
 
-        <div className="hero-art" aria-label="Illustration of a vinyl record and music notes">
+        <div className="hero-art" aria-label="Illustration of a vinyl record and audio waveform">
           <div className="record-shadow" />
           <div className="vinyl-record">
             <div className="vinyl-groove groove-one" />
             <div className="vinyl-groove groove-two" />
             <div className="vinyl-groove groove-three" />
-            <div className="vinyl-label"><Music4 className="h-8 w-8" /></div>
+            <div className="vinyl-label">
+              <svg className="vinyl-beatwave" viewBox="0 0 42 28" aria-hidden="true">
+                <path d="M1 14 H7 L10 11 L13 17 L17 5 L21 23 L25 8 L29 19 L33 11 L36 14 H41" />
+                <path d="M1 17 H7 L10 14 L13 20 L17 8 L21 26 L25 11 L29 22 L33 14 L36 17 H41" />
+              </svg>
+            </div>
             <div className="vinyl-hole" />
           </div>
           <div className="record-sheen" />
